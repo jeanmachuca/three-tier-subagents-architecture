@@ -81,6 +81,25 @@ opencode
 
 The configuration uses environment-variable references, so no credentials are stored in the file.
 
+## Credential precedence
+
+OpenCode credentials are scoped by the exact provider ID. When both a connected account and a configured credential exist, the connected account wins:
+
+| Situation | Effective credential |
+|---|---|
+| Active `/connect` account for the provider ID | Connected account; overrides config/env |
+| No connected account, config/env value present | `settings.apiKey` or the provider's `env` value |
+| No connected account and no config/env value | No credential; no `Authorization` header is sent |
+
+This means:
+
+- **`nvidia`** — If an Nvidia account is connected, `/connect` supplies the credential. `NVIDIA_API_KEY` is overridden even when it is set.
+- **`cloudflare`** — There is no Cloudflare `/connect` integration in this setup, so it uses `CLOUDFLARE_API_TOKEN`. If that variable is unset, requests are unauthenticated.
+- **`local-llama`** — No authentication is required.
+- A connected `nvidia` account does not affect a differently named provider such as `nvidia-api`.
+
+To make the environment variable authoritative for Nvidia, use a unique provider ID (for example, `nvidia-api`) and update the model references, or remove the connected Nvidia account.
+
 ## Requirements
 
 - [OpenCode](https://opencode.ai) with native V2 configuration support
