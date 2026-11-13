@@ -1,0 +1,131 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "nvidia/minimaxai/minimax-m3.1-flash",
+  "default_agent": "orchestrator",
+  "providers": {
+    "cloudflare": {
+      "name": "Cloudflare Workers AI",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://api.cloudflare.com/client/v4/accounts/{env:CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+        "apiKey": "{env:CLOUDFLARE_API_TOKEN}"
+      },
+      "models": {
+        "@cf/deepseek-ai/deepseek-v4.1-flash-1017": {
+          "name": "DeepSeek V4.1 Flash",
+          "limit": {
+            "context": 1048576
+          }
+        }
+      }
+    },
+    "nvidia": {
+      "name": "NVIDIA API Catalog",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "{env:NVIDIA_API_KEY}"
+      },
+      "models": {
+        "minimaxai/minimax-m3.1-flash": {
+          "name": "MiniMax M3.1 Flash (NVIDIA)",
+          "limit": {
+            "context": 1000000
+          },
+          "compatibility": {
+            "maxTokensField": "max_tokens"
+          }
+        }
+      }
+    },
+    "local-llama": {
+      "name": "Local llama.cpp",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8080/v1"
+      },
+      "models": {
+        "ggml-org/Qwen3.5-0.8B-GGUF": {
+          "modelID": "ggml-org/Qwen3.5-0.8B-GGUF:BF16",
+          "name": "Qwen 3.5 0.8B (Local)",
+          "limit": {
+            "context": 8192,
+            "output": 2048
+          },
+          "capabilities": {
+            "tools": false,
+            "input": ["text"],
+            "output": ["text"]
+          }
+        }
+      }
+    }
+  },
+  "agents": {
+    "orchestrator": {
+      "description": "Primary routing agent. Protects the main context and delegates large reads, deep reasoning, and trivial single-step work.",
+      "mode": "primary",
+      "system": "You are the primary orchestration agent. Apply these routing rules before every tool call:\n\n1. Protect the main context. Never read files larger than 400 lines or raw build/test logs directly. If a file may be large, check its size first (for example with `wc -l`). Delegate large files, logs, and documentation to the `heavy-reader` subagent and use only its concise summary.\n2. Isolate deep reasoning. For complex bugs, architecture decisions, or multi-file refactor plans, delegate the analysis to the `architect` subagent. Give it the problem statement, relevant paths, and constraints; do not paste large raw files into the main context.\n3. Offload trivial tasks. For git commit messages, data formatting, simple docstrings, or summaries of snippets under 100 lines, delegate to `micro-worker`. Prompts to `micro-worker` must be single-step and fully self-contained, including all input text, because it has no tools.\n\nHandle routine coding, small reads, and direct edits yourself. Do not delegate work that does not match these rules."
+    },
+    "architect": {
+      "mode": "subagent",
+      "model": "cloudflare/@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+      "description": "Deep-reasoning subagent for complex bugs, algorithm design, architecture, and multi-file refactor plans.",
+      "system": "Deep-reasoning analysis subagent. Analyze complex bugs, algorithm choices, architecture, and multi-file refactor plans. Read only the files needed, reason rigorously, and return a concise report with root cause, tradeoffs, risks, and concrete next steps. Do not edit files, run commands, or delegate to other subagents. Do not dump raw logs or file contents into the response.",
+      "permissions": [
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "subagent",
+          "resource": "*",
+          "effect": "deny"
+        }
+      ]
+    },
+    "heavy-reader": {
+      "mode": "subagent",
+      "model": "nvidia/minimaxai/minimax-m3.1-flash",
+      "description": "Large-context reader for files, logs, and docs. Returns a short summary instead of raw content.",
+      "system": "Large-context reader subagent. Read and digest the files, logs, or documentation named in the prompt, then return a concise summary. Extract only the facts needed by the parent: errors, causes, file paths, line references, and key findings. Do not edit files, run commands, or delegate to other subagents. Do not repeat raw content unless a short exact excerpt is essential.",
+      "permissions": [
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "subagent",
+          "resource": "*",
+          "effect": "deny"
+        }
+      ]
+    },
+    "micro-worker": {
+      "mode": "subagent",
+      "model": "local-llama/ggml-org/Qwen3.5-0.8B-GGUF",
+      "description": "Local single-step worker for commit messages, data formatting, simple docstrings, and short summaries.",
+      "system": "Single-step text worker. Perform exactly the one task in the prompt and return only the requested result. Do not explore the workspace, call tools, ask questions, or add commentary. If the request is ambiguous or needs more than one step, say so briefly instead of guessing.",
+      "steps": 1,
+      "permissions": [
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        }
+      ]
+    }
+  }
+}

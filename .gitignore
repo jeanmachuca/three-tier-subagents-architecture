@@ -1,0 +1,14 @@
+# Local OpenCode configuration
+opencode.json
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# macOS metadata
+.DS_Store
+._*
+
+# Logs
+*.log
